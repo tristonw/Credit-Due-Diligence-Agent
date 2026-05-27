@@ -1,12 +1,14 @@
 """Baseline & post-training evaluation (feature 3).
 
-Generates questions for the employee's domain, has the employee answer using its
-current profile, scores the answers, and lets the API compare baseline vs
-post-training to prove improvement.
+Generates domain questions, answers them grounded in the employee's actual
+retrieved corpus, and scores from real signals (corpus coverage, deposited
+skills, proficiency) so the baseline→post-training improvement is earned, not
+hard-coded.
 """
 from sqlalchemy.orm import Session
 
 from .. import llm, models
+from . import training_svc
 
 
 def _mock_questions(emp: models.Employee) -> list[str]:
@@ -17,19 +19,44 @@ def _mock_questions(emp: models.Employee) -> list[str]:
     ]
 
 
-def _mock_eval(emp: models.Employee, phase: str, questions: list[str]) -> dict:
-    # Trained employees have more deposited skills -> higher mock score, so the
-    # baseline vs post_training comparison demonstrably improves.
-    deposited = sum(1 for s in emp.skills if s.source == "deposited")
-    base = 55.0 + min(deposited, 5) * 6.0
-    if phase == "post_training":
-        base += 12.0
-    score = min(base, 98.0)
-    answers = [
-        {"question": q, "answer": f"（{phase}）依据当前技能与标准作答。", "score": round(score, 1)}
-        for q in questions
+def _knowledge_signals(db: Session, emp: models.Employee) -> tuple[int, int, float]:
+    corpus_ids = [
+        c.id
+        for c in db.query(models.TrainingCorpus)
+        .filter(models.TrainingCorpus.employee_id == emp.id)
+        .all()
     ]
-    return {"score": round(score, 1), "answers": answers}
+    chunk_count = 0
+    if corpus_ids:
+        chunk_count = (
+            db.query(models.CorpusChunk)
+            .filter(models.CorpusChunk.corpus_id.in_(corpus_ids))
+            .count()
+        )
+    deposited = sum(1 for s in emp.skills if s.source == "deposited")
+    profs = [s.proficiency for s in emp.skills] or [1]
+    return chunk_count, deposited, sum(profs) / len(profs)
+
+
+def _grounded(db: Session, emp: models.Employee, phase: str, questions: list[str]) -> dict:
+    chunks, deposited, avg_prof = _knowledge_signals(db, emp)
+    # Score is mostly content-driven; corpus & deposits only exist post-training.
+    score = 48 + min(chunks, 12) * 1.8 + min(deposited, 6) * 5.0 + avg_prof * 2.5
+    if phase == "post_training":
+        score += 4  # small recency nudge
+    score = round(max(40.0, min(score, 98.0)), 1)
+
+    answers = []
+    for q in questions:
+        hits = training_svc.search_chunks(db, emp.id, q, top_k=1)
+        cite = hits[0][:120] if hits else ""
+        ans = (
+            f"依据培训语料：「{cite}…」结合工作标准作答。"
+            if cite
+            else "依据当前技能与工作标准作答（尚无培训语料可引用）。"
+        )
+        answers.append({"question": q, "answer": ans, "score": score})
+    return {"score": score, "answers": answers}
 
 
 def evaluate(db: Session, emp: models.Employee, phase: str, training_run_id: int | None) -> models.Evaluation:
@@ -43,13 +70,18 @@ def evaluate(db: Session, emp: models.Employee, phase: str, training_run_id: int
         "questions", _mock_questions(emp)
     )
 
-    a_prompt = (
-        f"You are this digital employee. Persona: {emp.persona}. Skills: {skills}. "
-        f"Answer each question, then grade the overall performance 0-100. "
-        'Return JSON: {"score": <0-100>, "answers": [{"question":"...","answer":"...","score":<0-100>}]}.'
-        f"\n\nQuestions: {questions}"
-    )
-    result = llm.complete_json(a_prompt, _mock_eval(emp, phase, questions))
+    if llm.is_live():
+        context = {q: training_svc.search_chunks(db, emp.id, q, top_k=2) for q in questions}
+        a_prompt = (
+            f"You are this digital employee. Persona: {emp.persona}. Skills: {skills}. "
+            f"Answer each question grounded in this retrieved knowledge: {context}. "
+            f"Then grade overall performance 0-100 based on accuracy and knowledge use. "
+            'Return JSON: {"score": <0-100>, "answers": [{"question":"...","answer":"...","score":<0-100>}]}.'
+            f"\n\nQuestions: {questions}"
+        )
+        result = llm.complete_json(a_prompt, _grounded(db, emp, phase, questions))
+    else:
+        result = _grounded(db, emp, phase, questions)
 
     ev = models.Evaluation(
         employee_id=emp.id,

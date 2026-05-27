@@ -14,6 +14,7 @@ import {
   uploadCorpus,
 } from "../api.js";
 import { BarChart, LineChart, ProficiencyDots, RadialProgress } from "../components/charts.jsx";
+import Avatar from "../components/Avatar.jsx";
 
 export default function EmployeeDetail() {
   const { id } = useParams();
@@ -74,7 +75,7 @@ export default function EmployeeDetail() {
     if (!taskPrompt.trim()) return;
     const r = await runTask(id, taskPrompt);
     setLastTask(r);
-    setTaskMsg(`产出：${r.output}`);
+    setTaskMsg("");
     setTaskPrompt("");
     refresh();
   };
@@ -91,19 +92,8 @@ export default function EmployeeDetail() {
       <div className="card empcard">
         <div style={{ position: "relative", width: 96, height: 96 }}>
           <RadialProgress progress={leveling.progress} size={96} />
-          <div
-            className="avatar"
-            style={{
-              position: "absolute",
-              top: 11,
-              left: 11,
-              width: 74,
-              height: 74,
-              fontSize: 38,
-              background: emp.avatar?.color || "#4f46e5",
-            }}
-          >
-            {emp.avatar?.emoji || "🧑‍💼"}
+          <div style={{ position: "absolute", top: 11, left: 11 }}>
+            <Avatar avatar={emp.avatar} size={74} />
           </div>
         </div>
         <div style={{ flex: 1 }}>
@@ -231,9 +221,29 @@ export default function EmployeeDetail() {
           </div>
           {taskMsg && <p className="muted" style={{ marginTop: 10 }}>{taskMsg}</p>}
           {lastTask && (
-            <div className="row" style={{ marginTop: 10 }}>
-              <button className="good" onClick={() => doLabel("good")}>👍 好（加经验）</button>
-              <button className="bad" onClick={() => doLabel("bad")}>👎 差（扣经验）</button>
+            <div style={{ marginTop: 14, padding: 14, background: "#f9fafb", borderRadius: 10 }}>
+              <div style={{ marginBottom: 8 }}>
+                <span className="tag">套用SOP：{lastTask.applied_sop}</span>
+                <span className="tag" style={{ background: "#fef3c7", color: "#92400e" }}>
+                  质量分 {Math.round(lastTask.quality * 100)}
+                </span>
+                <span className="tag deposited">+{lastTask.exp_gained} EXP</span>
+              </div>
+              <pre style={{ whiteSpace: "pre-wrap", margin: "8px 0" }}>{lastTask.output}</pre>
+              {lastTask.dq_findings?.length > 0 && (
+                <div className="muted" style={{ marginTop: 8 }}>
+                  数据质量校验：
+                  {lastTask.dq_findings.map((f, i) => (
+                    <span key={i} style={{ marginLeft: 8, color: f.passed ? "#16a34a" : "#dc2626" }}>
+                      {f.passed ? "✅" : "⚠️"} {f.rule}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="row" style={{ marginTop: 12 }}>
+                <button className="good" onClick={() => doLabel("good")}>👍 好（加经验）</button>
+                <button className="bad" onClick={() => doLabel("bad")}>👎 差（扣经验）</button>
+              </div>
             </div>
           )}
         </Section>

@@ -12,7 +12,7 @@ def test_full_loop(client):
     assert emp["level"] == 1 and emp["experience"] == 0
     assert emp["outline"] is not None
     assert len(emp["skills"]) >= 1
-    assert emp["avatar"]
+    assert emp["avatar"]["style"] and emp["avatar"]["seed"]  # real avatar config
 
     # 3a) baseline evaluation
     base = client.post(f"/api/employees/{eid}/evaluate", json={"phase": "baseline"}).json()
@@ -35,7 +35,10 @@ def test_full_loop(client):
 
     # 5) run tasks + human labels move experience
     task = client.post(f"/api/employees/{eid}/tasks", json={"prompt": "评估某企业信贷风险"}).json()
-    assert task["experience"] >= 30
+    assert 0 < task["quality"] <= 1
+    assert task["exp_gained"] >= 10
+    assert task["experience"] == task["exp_gained"]  # first experience event
+    assert "applied_sop" in task and "dq_findings" in task
     good = client.post(f"/api/tasks/{task['task_id']}/label", json={"rating": "good"}).json()
     assert good["exp_delta"] == 40
     bad = client.post(f"/api/tasks/{task['task_id']}/label", json={"rating": "bad"}).json()
