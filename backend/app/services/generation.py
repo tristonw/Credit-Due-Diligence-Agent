@@ -1,14 +1,38 @@
 """Digital employee generation from a natural-language brief (feature 1)."""
+import hashlib
+
 from sqlalchemy.orm import Session
 
 from .. import llm, models
+
+# DiceBear collections the frontend can render offline.
+AVATAR_STYLES = ["notionists", "personas", "avataaars", "micah", "lorelei", "adventurer"]
+AVATAR_COLORS = ["4f46e5", "0891b2", "7c3aed", "db2777", "16a34a", "ea580c"]
+
+
+def build_avatar(name: str, description: str, given: dict | None = None) -> dict:
+    """Produce a stable, distinct avatar config for an employee.
+
+    Keeps any fields the LLM supplied but guarantees a DiceBear style + seed so
+    the frontend renders a real generated portrait instead of a bare emoji.
+    """
+    given = given or {}
+    seed_src = (name or "") + "|" + description[:40]
+    h = int(hashlib.md5(seed_src.encode()).hexdigest(), 16)
+    return {
+        "style": given.get("style") if given.get("style") in AVATAR_STYLES else AVATAR_STYLES[h % len(AVATAR_STYLES)],
+        "seed": given.get("seed") or f"{name or 'employee'}-{h % 100000}",
+        "color": given.get("color") or f"#{AVATAR_COLORS[h % len(AVATAR_COLORS)]}",
+        "emoji": given.get("emoji", "🧑‍💼"),
+        "image_url": given.get("image_url", ""),
+    }
 
 
 def _mock_profile(description: str, name: str) -> dict:
     return {
         "name": name or "数字员工",
         "persona": f"一名专注于「{description[:30]}」领域的数字员工，严谨、可培养。",
-        "avatar": {"style": "professional", "color": "#4f46e5", "emoji": "🧑‍💼", "image_url": ""},
+        "avatar": {},
         "outline": {
             "responsibilities": ["理解并执行相关领域的工作任务", "持续学习语料并沉淀标准"],
             "goals": ["保证产出质量达到工作标准基线", "通过培训不断提升能力"],
@@ -46,11 +70,12 @@ def generate_employee(db: Session, description: str, name: str | None) -> models
     )
     data = llm.complete_json(prompt, _mock_profile(description, name or ""))
 
+    emp_name = data.get("name") or name or "数字员工"
     emp = models.Employee(
-        name=data.get("name") or name or "数字员工",
+        name=emp_name,
         persona=data.get("persona", ""),
         description=description,
-        avatar=data.get("avatar", {}),
+        avatar=build_avatar(emp_name, description, data.get("avatar")),
         level=1,
         experience=0,
     )

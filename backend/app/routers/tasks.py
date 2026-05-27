@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import llm, models, schemas
+from .. import models, schemas
 from ..database import get_db
-from ..services import leveling_svc, training_svc
+from ..services import leveling_svc, work_svc
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
-TASK_COMPLETION_EXP = 30
 LABEL_GOOD_EXP = 40
 LABEL_BAD_EXP = -25
 
@@ -18,25 +17,23 @@ def run_task(employee_id: int, req: schemas.TaskRequest, db: Session = Depends(g
     if not emp:
         raise HTTPException(404, "employee not found")
 
-    context = training_svc.search_chunks(db, employee_id, req.prompt)
-    prompt = (
-        f"You are this digital employee. Persona: {emp.persona}. "
-        f"Use this knowledge if relevant: {context}. "
-        f'Complete the task and return JSON: {{"output": "..."}}.\n\nTask: {req.prompt}'
-    )
-    output = llm.complete_json(prompt, {"output": f"已完成任务：{req.prompt[:50]}（依据培训知识与工作标准产出）。"}).get(
-        "output", ""
-    )
-
-    task = models.WorkTask(employee_id=employee_id, prompt=req.prompt, output=output)
+    result = work_svc.execute_task(db, emp, req.prompt)
+    task = models.WorkTask(employee_id=employee_id, prompt=req.prompt, output=result["output"])
     db.add(task)
     db.commit()
     db.refresh(task)
 
-    emp, promo = leveling_svc.add_experience(db, emp, TASK_COMPLETION_EXP, f"完成任务 #{task.id}")
+    emp, promo = leveling_svc.add_experience(
+        db, emp, result["reward"], f"完成任务 #{task.id}（质量{result['quality']}）"
+    )
     return {
         "task_id": task.id,
-        "output": output,
+        "output": result["output"],
+        "applied_sop": result["applied_sop"],
+        "quality": result["quality"],
+        "references": result["references"],
+        "dq_findings": result["dq_findings"],
+        "exp_gained": result["reward"],
         "experience": emp.experience,
         "level": emp.level,
         "promotion_request_id": promo.id if promo else None,

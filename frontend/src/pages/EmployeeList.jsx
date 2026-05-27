@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listEmployees } from "../api.js";
+import Avatar from "../components/Avatar.jsx";
 
 export default function EmployeeList() {
   const [employees, setEmployees] = useState([]);
@@ -19,12 +20,7 @@ export default function EmployeeList() {
       {employees.map((e) => (
         <Link key={e.id} to={`/employees/${e.id}`}>
           <div className="card empcard">
-            <div
-              className="avatar"
-              style={{ background: e.avatar?.color || "#4f46e5" }}
-            >
-              {e.avatar?.emoji || "🧑‍💼"}
-            </div>
+            <Avatar avatar={e.avatar} size={64} />
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 16 }}>{e.name}</div>
               <div className="muted">{e.persona}</div>
