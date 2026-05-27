@@ -5,18 +5,23 @@ import {
   evaluate,
   getDeposits,
   getEmployee,
+  getExperienceLog,
   getLeveling,
+  getLevelingCurve,
   labelTask,
   runTask,
   train,
   uploadCorpus,
 } from "../api.js";
+import { BarChart, LineChart, ProficiencyDots, RadialProgress } from "../components/charts.jsx";
 
 export default function EmployeeDetail() {
   const { id } = useParams();
   const [emp, setEmp] = useState(null);
   const [leveling, setLeveling] = useState(null);
   const [deposits, setDeposits] = useState(null);
+  const [expLog, setExpLog] = useState([]);
+  const [curve, setCurve] = useState([]);
   const [tab, setTab] = useState("profile");
 
   const [corpusTitle, setCorpusTitle] = useState("");
@@ -35,10 +40,12 @@ export default function EmployeeDetail() {
     setLeveling(await getLeveling(id));
     setDeposits(await getDeposits(id));
     setCmp(await compareEval(id));
+    setExpLog(await getExperienceLog(id));
   };
 
   useEffect(() => {
     refresh();
+    getLevelingCurve(8).then(setCurve);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -80,10 +87,24 @@ export default function EmployeeDetail() {
 
   return (
     <div>
-      {/* avatar + leveling header (features 6 & 5) */}
+      {/* avatar with level ring + leveling header (features 6 & 5) */}
       <div className="card empcard">
-        <div className="avatar" style={{ background: emp.avatar?.color || "#4f46e5" }}>
-          {emp.avatar?.emoji || "🧑‍💼"}
+        <div style={{ position: "relative", width: 96, height: 96 }}>
+          <RadialProgress progress={leveling.progress} size={96} />
+          <div
+            className="avatar"
+            style={{
+              position: "absolute",
+              top: 11,
+              left: 11,
+              width: 74,
+              height: 74,
+              fontSize: 38,
+              background: emp.avatar?.color || "#4f46e5",
+            }}
+          >
+            {emp.avatar?.emoji || "🧑‍💼"}
+          </div>
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 20 }}>
@@ -103,9 +124,9 @@ export default function EmployeeDetail() {
       </div>
 
       <div className="tabs">
-        {["profile", "train", "evaluate", "task"].map((t) => (
+        {["profile", "growth", "train", "evaluate", "task"].map((t) => (
           <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-            {{ profile: "档案/沉淀物", train: "培训", evaluate: "测评", task: "工作&打标" }[t]}
+            {{ profile: "档案/沉淀物", growth: "成长曲线", train: "培训", evaluate: "测评", task: "工作&打标" }[t]}
           </button>
         ))}
       </div>
@@ -115,10 +136,49 @@ export default function EmployeeDetail() {
           <Section title="工作大纲">
             <pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(emp.outline?.content, null, 2)}</pre>
           </Section>
-          <DepositTable title="技能" items={deposits.skills} cols={["name", "category", "proficiency"]} />
+          <SkillTable items={deposits.skills} />
           <DepositTable title="工作标准" items={deposits.standards} cols={["name"]} />
           <DepositTable title="SOP" items={deposits.sops} cols={["title"]} />
           <DepositTable title="数据质量规则" items={deposits.rules} cols={["name", "rule_expr", "severity"]} />
+        </>
+      )}
+
+      {tab === "growth" && (
+        <>
+          <Section title="经验成长轨迹">
+            {expLog.length ? (
+              <LineChart points={expLog.map((e, i) => ({ x: i + 1, y: e.balance_after }))} />
+            ) : (
+              <p className="muted">还没有经验记录，去「工作&打标」让员工做点事吧。</p>
+            )}
+            <p className="muted">每个点是一次经验变动后的累计值（完成任务/人工打标）。</p>
+          </Section>
+          <Section title="升级难度曲线">
+            <LineChart
+              points={curve.map((c) => ({ x: c.level, y: c.step_exp }))}
+              color="#7c3aed"
+              fill="rgba(124,58,237,0.12)"
+            />
+            <p className="muted">
+              当前 L{emp.level}，升到 L{emp.level + 1} 需 {leveling.exp_for_next - leveling.exp_for_current} 经验，越往后越陡。
+            </p>
+          </Section>
+          <Section title="经验流水">
+            <table>
+              <thead><tr><th>变动</th><th>原因</th><th>余额</th></tr></thead>
+              <tbody>
+                {[...expLog].reverse().map((e) => (
+                  <tr key={e.id}>
+                    <td style={{ color: e.delta >= 0 ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                      {e.delta > 0 ? "+" : ""}{e.delta}
+                    </td>
+                    <td>{e.reason}</td>
+                    <td>{e.balance_after}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Section>
         </>
       )}
 
@@ -143,19 +203,21 @@ export default function EmployeeDetail() {
             <button onClick={() => doEval("post_training")}>培训后测评</button>
           </div>
           {evalMsg && <p className="muted" style={{ marginTop: 10 }}>{evalMsg}</p>}
-          {cmp && (
-            <table style={{ marginTop: 12 }}>
-              <tbody>
-                <tr><td>基线得分</td><td>{cmp.baseline ?? "—"}</td></tr>
-                <tr><td>培训后得分</td><td>{cmp.post_training ?? "—"}</td></tr>
-                <tr>
-                  <td>提升</td>
-                  <td style={{ color: cmp.improved ? "#16a34a" : "#dc2626" }}>
-                    {cmp.delta == null ? "—" : `${cmp.delta > 0 ? "+" : ""}${cmp.delta}（${cmp.improved ? "已提升" : "未提升"}）`}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          {cmp && (cmp.baseline != null || cmp.post_training != null) && (
+            <div style={{ marginTop: 16 }}>
+              <BarChart
+                max={100}
+                data={[
+                  { label: "培训前", value: cmp.baseline ?? 0, color: "#9ca3af" },
+                  { label: "培训后", value: cmp.post_training ?? 0, color: "#16a34a" },
+                ]}
+              />
+              {cmp.delta != null && (
+                <p style={{ color: cmp.improved ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
+                  提升 {cmp.delta > 0 ? "+" : ""}{cmp.delta} 分（{cmp.improved ? "已提升 ✅" : "未提升"}）
+                </p>
+              )}
+            </div>
           )}
         </Section>
       )}
@@ -189,6 +251,38 @@ function Section({ title, children }) {
   );
 }
 
+function SourceTag({ source }) {
+  return (
+    <span className={`tag ${source === "deposited" ? "deposited" : ""}`}>
+      {source === "deposited" ? "培训沉淀" : "初始生成"}
+    </span>
+  );
+}
+
+function SkillTable({ items }) {
+  return (
+    <div className="card">
+      <h3 style={{ marginTop: 0 }}>技能（{items.length}）</h3>
+      <table>
+        <thead>
+          <tr><th>name</th><th>category</th><th>熟练度</th><th>来源</th><th>版本</th></tr>
+        </thead>
+        <tbody>
+          {items.map((it) => (
+            <tr key={it.id}>
+              <td>{it.name}</td>
+              <td>{it.category}</td>
+              <td><ProficiencyDots value={it.proficiency} /></td>
+              <td><SourceTag source={it.source} /></td>
+              <td>v{it.version}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DepositTable({ title, items, cols }) {
   return (
     <div className="card">
@@ -204,11 +298,7 @@ function DepositTable({ title, items, cols }) {
           {items.map((it) => (
             <tr key={it.id}>
               {cols.map((c) => <td key={c}>{String(it[c])}</td>)}
-              <td>
-                <span className={`tag ${it.source === "deposited" ? "deposited" : ""}`}>
-                  {it.source === "deposited" ? "培训沉淀" : "初始生成"}
-                </span>
-              </td>
+              <td><SourceTag source={it.source} /></td>
               <td>v{it.version}</td>
             </tr>
           ))}

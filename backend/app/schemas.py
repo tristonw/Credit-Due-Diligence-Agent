@@ -111,6 +111,31 @@ class LevelingOut(BaseModel):
     needs_expert_approval: bool
 
 
+class ExperienceLogOut(_ORM):
+    id: int
+    delta: int
+    reason: str
+    balance_after: int
+    created_at: datetime
+
+
+class CurvePoint(BaseModel):
+    level: int
+    cumulative_exp: int
+    step_exp: int
+
+
+class StatsOut(BaseModel):
+    employees: int
+    avg_level: float
+    total_experience: int
+    tasks: int
+    labels_good: int
+    labels_bad: int
+    deposits: int
+    pending_promotions: int
+
+
 class EvaluationOut(_ORM):
     id: int
     phase: str
