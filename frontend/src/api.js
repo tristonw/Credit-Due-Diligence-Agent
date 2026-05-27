@@ -18,6 +18,11 @@ export const compareEval = (id) =>
 
 export const getDeposits = (id) => api.get(`/employees/${id}/deposits`).then((r) => r.data);
 export const getLeveling = (id) => api.get(`/employees/${id}/leveling`).then((r) => r.data);
+export const getExperienceLog = (id) =>
+  api.get(`/employees/${id}/experience-log`).then((r) => r.data);
+export const getLevelingCurve = (maxLevel = 10) =>
+  api.get("/leveling-curve", { params: { max_level: maxLevel } }).then((r) => r.data);
+export const getStats = () => api.get("/stats").then((r) => r.data);
 
 export const runTask = (id, prompt) =>
   api.post(`/employees/${id}/tasks`, { prompt }).then((r) => r.data);
