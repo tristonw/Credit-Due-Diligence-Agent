@@ -117,6 +117,12 @@ class TrainingCorpus(Base):
     employee_id = Column(Integer, ForeignKey("employees.id"))
     title = Column(String, default="")
     raw_text = Column(Text, default="")
+    # Supervised-signal fields for the "distill Triston" use case.
+    # label: "pass" | "fail" | None (plain unlabeled text still supported).
+    # split: "train" (default) | "test" — the employee only trains on train.
+    label = Column(String, nullable=True)
+    feedback = Column(Text, default="")
+    split = Column(String, default="train")
     created_at = Column(DateTime, default=_now)
 
 
@@ -184,6 +190,24 @@ class ExperienceLog(Base):
     delta = Column(Integer, default=0)
     reason = Column(String, default="")
     balance_after = Column(Integer, default=0)
+    created_at = Column(DateTime, default=_now)
+
+
+class Judgment(Base):
+    """A judgment Triston makes on a transcript: prediction + (optional) truth."""
+
+    __tablename__ = "judgments"
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"))
+    corpus_id = Column(Integer, ForeignKey("training_corpus.id"), nullable=True)
+    transcript_preview = Column(Text, default="")
+    prediction = Column(String, default="pass")  # pass | fail
+    confidence = Column(Float, default=0.5)
+    reasoning = Column(Text, default="")
+    matched_criteria = Column(JSON, default=list)
+    ground_truth = Column(String, nullable=True)  # pass | fail | None
+    correct = Column(Integer, nullable=True)  # 1/0/None (None when no ground truth)
     created_at = Column(DateTime, default=_now)
 
 

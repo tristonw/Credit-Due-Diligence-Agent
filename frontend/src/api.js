@@ -7,9 +7,19 @@ export const getEmployee = (id) => api.get(`/employees/${id}`).then((r) => r.dat
 export const createEmployee = (description, name) =>
   api.post("/employees", { description, name }).then((r) => r.data);
 
-export const uploadCorpus = (id, title, text) =>
-  api.post(`/employees/${id}/corpus`, { title, text }).then((r) => r.data);
+export const uploadCorpus = (id, payload) =>
+  api.post(`/employees/${id}/corpus`, payload).then((r) => r.data);
+export const listCorpus = (id) => api.get(`/employees/${id}/corpus`).then((r) => r.data);
+export const updateCorpus = (id, corpusId, patch) =>
+  api.patch(`/employees/${id}/corpus/${corpusId}`, patch).then((r) => r.data);
 export const train = (id) => api.post(`/employees/${id}/train`).then((r) => r.data);
+
+export const judge = (id, transcript, ground_truth = null) =>
+  api.post(`/employees/${id}/judge`, { transcript, ground_truth }).then((r) => r.data);
+export const evaluateJudgment = (id) =>
+  api.post(`/employees/${id}/evaluate-judgment`).then((r) => r.data);
+export const listJudgments = (id) =>
+  api.get(`/employees/${id}/judgments`).then((r) => r.data);
 
 export const evaluate = (id, phase) =>
   api.post(`/employees/${id}/evaluate`, { phase }).then((r) => r.data);

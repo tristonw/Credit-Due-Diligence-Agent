@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import llm, models  # noqa: F401 (models imported so tables register)
 from .database import Base, engine
-from .routers import deposits, employees, evaluation, leveling, tasks, training
+from .routers import deposits, employees, evaluation, judgment, leveling, tasks, training
 
 Base.metadata.create_all(bind=engine)
 
@@ -22,6 +22,7 @@ app.include_router(evaluation.router)
 app.include_router(deposits.router)
 app.include_router(tasks.router)
 app.include_router(leveling.router)
+app.include_router(judgment.router)
 
 
 @app.get("/api/health")

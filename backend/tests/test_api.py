@@ -49,6 +49,61 @@ def test_full_loop(client):
     assert 0.0 <= lv["progress"] <= 1.0
 
 
+def test_distill_triston_interview(client):
+    """End-to-end: upload labeled interview transcripts, train, judge a fresh
+    candidate, run held-out test-set evaluation, check accuracy is reported."""
+    emp = client.post(
+        "/api/employees",
+        json={
+            "description": "资深面试官，按照通过/不通过标准评估候选人的技术深度与表达",
+            "name": "Triston",
+        },
+    ).json()
+    eid = emp["id"]
+
+    # Upload labeled training transcripts (two pass, two fail) + a test transcript.
+    cases = [
+        ("候选人A 通过", "讲了系统设计权衡，量化了上线指标，主动 ownership 解决问题。", "pass", "train"),
+        ("候选人B 通过", "结构化回答，给出 STAR 例子，成功上线核心模块。", "pass", "train"),
+        ("候选人C 不通过", "回避具体细节，记不得参与的项目，没有量化产出。", "fail", "train"),
+        ("候选人D 不通过", "不清楚架构取舍，沟通模糊，未参与上线决策。", "fail", "train"),
+        ("候选人E 测试", "明确 ownership，量化结果，系统设计权衡到位。", "pass", "test"),
+        ("候选人F 测试", "记不得细节，无法回答，回避问题。", "fail", "test"),
+    ]
+    for title, text, label, split in cases:
+        r = client.post(
+            f"/api/employees/{eid}/corpus",
+            json={"title": title, "text": text, "label": label, "split": split},
+        ).json()
+        assert r["label"] == label and r["split"] == split
+
+    # Train: must report "labeled" mode and create deposits (standards + rules).
+    train = client.post(f"/api/employees/{eid}/train").json()
+    assert train["mode"] == "labeled"
+    assert train["pass_size"] == 2 and train["fail_size"] == 2
+    assert train["deposits"]["standards"] >= 1
+    assert train["deposits"]["rules"] >= 1
+
+    # One-off judge with a known ground truth -> earns experience for being correct.
+    j = client.post(
+        f"/api/employees/{eid}/judge",
+        json={
+            "transcript": "候选人 G 给出量化结果、系统设计权衡，主动 ownership。",
+            "ground_truth": "pass",
+        },
+    ).json()
+    assert j["judgment"]["prediction"] == "pass"
+    assert j["judgment"]["correct"] == 1
+    assert j["exp_gained"] == 30
+
+    # Held-out evaluation on the two test cases.
+    acc = client.post(f"/api/employees/{eid}/evaluate-judgment").json()
+    assert acc["train_size"] == 4 and acc["test_size"] == 2
+    assert acc["accuracy"] is not None
+    assert 0.0 <= acc["accuracy"] <= 1.0
+    assert acc["tp"] + acc["fp"] + acc["tn"] + acc["fn"] == 2
+
+
 def test_expert_gated_promotion(client):
     # Big experience grant should push the employee toward an expert-gated level.
     emp = client.post("/api/employees", json={"description": "测试升级", "name": "升级测试"}).json()

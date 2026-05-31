@@ -17,6 +17,20 @@ class CreateEmployeeRequest(BaseModel):
 class CorpusRequest(BaseModel):
     title: str = ""
     text: str
+    label: Optional[str] = None  # "pass" | "fail" | None
+    feedback: str = ""
+    split: str = "train"  # "train" | "test"
+
+
+class JudgmentRequest(BaseModel):
+    transcript: str
+    ground_truth: Optional[str] = None  # if known, will score it
+
+
+class CorpusUpdate(BaseModel):
+    label: Optional[str] = None
+    feedback: Optional[str] = None
+    split: Optional[str] = None
 
 
 class EvaluateRequest(BaseModel):
@@ -150,6 +164,40 @@ class EvaluationCompareOut(BaseModel):
     post_training: Optional[float] = None
     improved: Optional[bool] = None
     delta: Optional[float] = None
+
+
+class CorpusOut(_ORM):
+    id: int
+    title: str
+    label: Optional[str] = None
+    feedback: str
+    split: str
+    created_at: datetime
+
+
+class JudgmentOut(_ORM):
+    id: int
+    prediction: str
+    confidence: float
+    reasoning: str
+    matched_criteria: Any
+    ground_truth: Optional[str] = None
+    correct: Optional[int] = None
+    transcript_preview: str
+    created_at: datetime
+
+
+class AccuracyOut(BaseModel):
+    train_size: int
+    test_size: int
+    accuracy: Optional[float] = None
+    precision_pass: Optional[float] = None
+    recall_pass: Optional[float] = None
+    tp: int = 0
+    fp: int = 0
+    tn: int = 0
+    fn: int = 0
+    judgments: list[JudgmentOut] = []
 
 
 class PromotionOut(_ORM):
